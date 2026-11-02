@@ -1,6 +1,6 @@
 // Service worker: кэширует файлы приложения и показывает push-уведомления.
 // После изменения файлов приложения увеличьте VERSION, чтобы телефоны получили обновление.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'api.js', 'config.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {

@@ -39,9 +39,9 @@ async function supabaseApi() {
     setSteps: async (day, steps) => ok(await sb.from('steps').upsert({ user_id: uid, day, steps })),
     deleteSteps: async (day) => ok(await sb.from('steps').delete().eq('user_id', uid).eq('day', day)),
 
-    // Postgres отдаёт время как «23:30:00» — оставляем «23:30»
+    // Postgres отдаёт время как «23:30:00» — оставляем «23:30»; wake пустой, пока подъём не отмечен
     sleep: async (from) => ok(await sb.from('sleep').select('*').gte('day', from).order('day'))
-      .map((s) => ({ ...s, bed: s.bed.slice(0, 5), wake: s.wake.slice(0, 5) })),
+      .map((s) => ({ ...s, bed: s.bed.slice(0, 5), wake: s.wake?.slice(0, 5) ?? null })),
     setSleep: async (day, bed, wake) => ok(await sb.from('sleep').upsert({ user_id: uid, day, bed, wake })),
     deleteSleep: async (day) => ok(await sb.from('sleep').delete().eq('user_id', uid).eq('day', day)),
 

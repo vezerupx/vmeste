@@ -79,6 +79,11 @@ const waterTotal = (uid) => state.water.filter((w) => w.user_id === uid).reduce(
 const weightsOf = (uid) => state.weights.filter((w) => w.user_id === uid).map((w) => ({ ...w, kg: Number(w.kg) }));
 const stepsOn = (uid, day) => state.steps.find((s) => s.user_id === uid && s.day === day)?.steps;
 const sleepOn = (uid, day) => state.sleep.find((s) => s.user_id === uid && s.day === day);
+// Только ночи с отмеченным подъёмом идут в графики, средние и оценки
+const fullSleepOn = (uid, day) => { const s = sleepOn(uid, day); return s?.wake ? s : undefined; };
+const nowHM = () => new Date().toTimeString().slice(0, 5);
+// На какую ночь записать отбой: днём и вечером — на завтрашнее утро, после полуночи — на сегодняшнее
+const bedNightDay = () => (new Date().getHours() >= 12 ? addDays(dayStr(), 1) : dayStr());
 
 // Сон: время «ЧЧ:ММ» → минуты от полуночи; длительность считаем через полночь
 const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
@@ -198,7 +203,6 @@ function viewToday() {
   const myEntries = state.water.filter((w) => w.user_id === m.id);
   const myWeight = weightsOf(m.id).find((w) => w.day === today);
   const mySteps = stepsOn(m.id, today);
-  const mySleep = sleepOn(m.id, today);
 
   const weightRow = (p) => {
     const ws = weightsOf(p.id);
@@ -251,22 +255,7 @@ function viewToday() {
     ${state.people.map(weightRow).join('')}
   </section>
 
-  <section class="card">
-    <h2>😴 Сон ${mySleep ? badge('sleep', sleepMin(mySleep)) : ''}</h2>
-    <form data-form="sleep" class="form-grid">
-      <label>Лёг<input name="bed" type="time" value="${mySleep?.bed ?? ''}" required></label>
-      <label>Встал<input name="wake" type="time" value="${mySleep?.wake ?? ''}" required></label>
-      <button class="btn full">${mySleep ? 'Изменить' : 'Записать'}</button>
-    </form>
-    ${mySleep ? scale('sleep', sleepMin(mySleep)) : ''}
-    ${state.people.map((p) => {
-      const s = sleepOn(p.id, today);
-      return `<div class="person-row"><span class="dot" style="background:${colorOf(p)}"></span>
-        <span class="who">${esc(nameOf(p))}</span><span class="val">${s ? fmtDur(sleepMin(s)) : '—'}</span>
-        <span class="sub">${s ? `${s.bed} – ${s.wake} ${badge('sleep', sleepMin(s))}` : 'ещё не внесено'}</span></div>`;
-    }).join('')}
-    <p class="hint">Утром запишите, во сколько легли вчера и проснулись сегодня.</p>
-  </section>
+  ${sleepCard(m, today)}
 
   <section class="card">
     <h2>👟 Шаги ${mySteps != null ? badge('steps', mySteps) : ''}</h2>
@@ -283,6 +272,61 @@ function viewToday() {
         <span class="sub">${s != null ? `шагов ${badge('steps', s)}` : 'ещё не внесено'}</span></div>`;
     }).join('')}
     <p class="hint">Шаги смотрите в приложении «Здоровье» и вносите вечером, до 23:00.</p>
+  </section>`;
+}
+
+// Сон в два шага: вечером записываем отбой, утром одной кнопкой отмечаем подъём.
+// Ночь хранится на дату пробуждения: last — ночь, после которой проснулись сегодня,
+// next — отбой, записанный на предстоящую ночь.
+function sleepCard(m, today) {
+  const hour = new Date().getHours();
+  const afternoon = hour >= 12;
+  const last = sleepOn(m.id, today);
+  const next = sleepOn(m.id, addDays(today, 1));
+  const lastForm = () => `<form data-form="sleep" class="form-grid">
+      <label>Лёг<input name="bed" type="time" value="${last?.bed ?? ''}" required></label>
+      <label>Встал<input name="wake" type="time" value="${last?.wake ?? ''}"></label>
+      <button class="btn full">Сохранить</button>
+    </form>`;
+
+  let morning;
+  if (last && !last.wake) {
+    const greet = hour < 5 ? 'Утром отметьте подъём.' : afternoon ? 'Во сколько проснулись?' : 'Доброе утро!';
+    morning = `<p class="row-text">🌙 Отбой был в <b>${last.bed}</b>. ${greet}</p>
+      <form data-form="wake" class="inline-form">
+        <input name="wake" type="time" value="${nowHM()}" required>
+        <button class="btn">Проснулся</button>
+      </form>`;
+  } else if (last) {
+    morning = `${scale('sleep', sleepMin(last))}
+      <details class="edit"><summary>Прошлая ночь: ${last.bed} – ${last.wake} · изменить</summary>${lastForm()}</details>`;
+  } else if (!afternoon) {
+    morning = `<p class="row-text">Во сколько легли и проснулись? Если ещё не ложились, укажите только «Лёг».</p>${lastForm()}`;
+  } else {
+    morning = `<details class="edit"><summary>Внести прошлую ночь</summary>${lastForm()}</details>`;
+  }
+
+  const evening = afternoon ? `<div class="bedtime">
+      <p class="row-text">${next ? `🌙 Сегодня отбой в <b>${next.bed}</b>` : 'Во сколько ложитесь сегодня?'}</p>
+      <form data-form="bed" class="inline-form">
+        <input name="bed" type="time" value="${next?.bed ?? ''}" required>
+        <button class="btn">${next ? 'Изменить' : 'Записать'}</button>
+      </form>
+      ${next ? '' : '<button type="button" class="chip wide" data-act="bed-now">🌙 Ложусь прямо сейчас</button>'}
+    </div>` : '';
+
+  return `<section class="card">
+    <h2>😴 Сон ${last?.wake ? badge('sleep', sleepMin(last)) : ''}</h2>
+    ${morning}
+    ${evening}
+    ${state.people.map((p) => {
+      const s = sleepOn(p.id, today), n = sleepOn(p.id, addDays(today, 1));
+      const sub = s?.wake ? `${s.bed} – ${s.wake} ${badge('sleep', sleepMin(s))}`
+        : s ? `отбой в ${s.bed}, подъём не отмечен` : 'ещё не внесено';
+      return `<div class="person-row"><span class="dot" style="background:${colorOf(p)}"></span>
+        <span class="who">${esc(nameOf(p))}</span><span class="val">${s?.wake ? fmtDur(sleepMin(s)) : '—'}</span>
+        <span class="sub">${sub}${n ? ` · сегодня отбой в ${n.bed}` : ''}</span></div>`;
+    }).join('')}
   </section>`;
 }
 
@@ -382,7 +426,7 @@ function viewSleep() {
 
   <section class="card">
     ${barChart(days, state.people, {
-      valueOf: (p, d) => { const s = sleepOn(p.id, d); return s ? sleepMin(s) / 60 : null; },
+      valueOf: (p, d) => { const s = fullSleepOn(p.id, d); return s ? sleepMin(s) / 60 : null; },
       niceTop: (max) => Math.max(Math.ceil(max / 2) * 2, 10),
       label: (v) => (v ? `${v} ч` : '0'),
       aria: 'График сна',
@@ -390,7 +434,7 @@ function viewSleep() {
     })}
     ${legend(state.people)}
     ${state.people.map((p) => {
-      const list = days.map((d) => sleepOn(p.id, d)).filter(Boolean);
+      const list = days.map((d) => fullSleepOn(p.id, d)).filter(Boolean);
       const mins = list.map(sleepMin);
       return `<div class="person-stats">
         <div class="who"><span class="dot" style="background:${colorOf(p)}"></span>${esc(nameOf(p))}</div>
@@ -413,7 +457,7 @@ function viewSleep() {
       <button class="btn full">Сохранить</button>
     </form>
     ${myList.length ? `<ul class="list">${myList.map((s) => `<li><span>${fmtDay(s.day, { weekday: 'short', day: 'numeric', month: 'long' })}<br>
-      <small>${s.bed} – ${s.wake}</small></span>${badge('sleep', sleepMin(s))}<b>${fmtDur(sleepMin(s))}</b>
+      <small>${s.bed} – ${s.wake ?? 'подъём не отмечен'}</small></span>${s.wake ? `${badge('sleep', sleepMin(s))}<b>${fmtDur(sleepMin(s))}</b>` : '<b>—</b>'}
       <button class="x" data-act="del-sleep" data-day="${s.day}" aria-label="Удалить">×</button></li>`).join('')}</ul>`
       : '<div class="empty">Записей пока нет</div>'}
   </section>`;
@@ -543,6 +587,7 @@ app.addEventListener('click', (e) => {
     case 'del-water': run(() => api.deleteWater(Number(d.id)), 'Удалено'); break;
     case 'del-weight': if (confirm('Удалить запись веса?')) run(() => api.deleteWeight(d.day), 'Удалено'); break;
     case 'del-steps': if (confirm('Удалить запись шагов?')) run(() => api.deleteSteps(d.day), 'Удалено'); break;
+    case 'bed-now': run(() => api.setSleep(bedNightDay(), nowHM(), null), 'Спокойной ночи 🌙'); break;
     case 'del-sleep': if (confirm('Удалить запись сна?')) run(() => api.deleteSleep(d.day), 'Удалено'); break;
     case 'wrange': state.weightRange = Number(d.v); render(); break;
     case 'srange': state.stepsRange = Number(d.v); render(); break;
@@ -568,7 +613,9 @@ app.addEventListener('submit', (e) => {
     case 'weight-day': run(() => api.setWeight(v.day, Math.round(num(v.kg) * 10) / 10), 'Сохранено'); break;
     case 'steps': run(() => api.setSteps(dayStr(), Math.round(num(v.steps))), 'Шаги записаны'); break;
     case 'steps-day': run(() => api.setSteps(v.day, Math.round(num(v.steps))), 'Сохранено'); break;
-    case 'sleep': run(() => api.setSleep(dayStr(), v.bed, v.wake), 'Сон записан'); break;
+    case 'sleep': run(() => api.setSleep(dayStr(), v.bed, v.wake || null), 'Сон записан'); break;
+    case 'bed': run(() => api.setSleep(bedNightDay(), v.bed, null), 'Спокойной ночи 🌙'); break;
+    case 'wake': run(() => api.setSleep(dayStr(), sleepOn(api.uid, dayStr()).bed, v.wake), 'Доброе утро ☀️'); break;
     case 'sleep-day': run(() => api.setSleep(v.day, v.bed, v.wake), 'Сохранено'); break;
     case 'profile': run(() => api.saveProfile({ name: v.name.trim(), ...(v.color ? { color: v.color } : {}) }), 'Сохранено'); break;
   }

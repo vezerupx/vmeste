@@ -151,6 +151,13 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .stats.three { grid-template-columns: repeat(3, 1fr); }
 .chart .guide { stroke: var(--r2); stroke-width: 1; stroke-dasharray: 4 3; opacity: .7; }
 
+/* Сон: вечерний отбой и сворачиваемое редактирование прошлой ночи */
+.bedtime { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.chip.wide { width: 100%; margin-bottom: 4px; }
+details.edit { margin: 8px 0; }
+details.edit summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 4px 0; }
+details.edit[open] summary { margin-bottom: 8px; }
+
 /* Форма с подписанными полями (сон) */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
 .form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); min-width: 0; }
