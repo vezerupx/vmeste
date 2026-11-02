@@ -45,6 +45,10 @@ async function supabaseApi() {
     setSleep: async (day, bed, wake) => ok(await sb.from('sleep').upsert({ user_id: uid, day, bed, wake })),
     deleteSleep: async (day) => ok(await sb.from('sleep').delete().eq('user_id', uid).eq('day', day)),
 
+    // Чистки только добавляются: удалять их база не даёт
+    brushing: async (from) => ok(await sb.from('brushing').select('*').gte('day', from).order('started_at')),
+    addBrushing: async (day, startedAt, seconds) => ok(await sb.from('brushing').insert({ user_id: uid, day, started_at: startedAt, seconds })),
+
     savePush: async (sub) => ok(await sb.from('push_subs').upsert({ endpoint: sub.endpoint, user_id: uid, sub })),
     testPush: async () => ok(await sb.functions.invoke('reminders', { body: { test: true } })),
   };
@@ -100,6 +104,12 @@ function demoApi() {
       db.sleep.push({ user_id: db.uid, day, bed, wake }); save();
     },
     deleteSleep: async (day) => { db.sleep = (db.sleep ?? []).filter((s) => !(s.user_id === db.uid && s.day === day)); save(); },
+
+    brushing: async (from) => (db.brushing ??= []).filter((b) => b.day >= from)
+      .sort((a, b) => a.started_at.localeCompare(b.started_at)),
+    addBrushing: async (day, startedAt, seconds) => {
+      (db.brushing ??= []).push({ id: db.seq++, user_id: db.uid, day, started_at: startedAt, seconds }); save();
+    },
 
     savePush: async () => {},
     testPush: async () => { throw new Error('В демо-режиме уведомления не отправляются'); },

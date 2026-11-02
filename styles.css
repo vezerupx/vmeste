@@ -158,6 +158,39 @@ details.edit { margin: 8px 0; }
 details.edit summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 4px 0; }
 details.edit[open] summary { margin-bottom: 8px; }
 
+/* Зубы */
+.teeth-main { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
+.teeth-count { display: flex; flex-direction: column; line-height: 1.1; }
+.teeth-count b { font-size: 34px; }
+.teeth-count span { font-size: 12px; color: var(--muted); }
+.teeth-main .btn { flex: 1; }
+.brush { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; margin: 2px 2px 0 0; }
+.brush.ok { color: var(--r2); background: var(--r2-bg); }
+.brush.short { color: var(--r0); background: var(--r0-bg); font-weight: 600; }
+.week { display: grid; grid-template-columns: minmax(64px, auto) repeat(7, 1fr); gap: 4px; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.wk-day { font-size: 11px; color: var(--muted); text-align: center; }
+.wk-who { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; white-space: nowrap; }
+.wk { position: relative; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; background: var(--chip); color: var(--muted); }
+.wk.r0 { color: var(--r0); background: var(--r0-bg); }
+.wk.r1 { color: var(--r1); background: var(--r1-bg); }
+.wk.r2 { color: var(--r2); background: var(--r2-bg); }
+.wk.now { outline: 2px dashed var(--line); outline-offset: -2px; }
+.wk i { position: absolute; top: -5px; right: -3px; font-style: normal; font-size: 10px; line-height: 14px; width: 14px; border-radius: 50%; background: var(--r0); color: #fff; text-align: center; }
+
+/* Полноэкранный таймер */
+.overlay { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; align-items: center; justify-content: center;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px); }
+.overlay-box { width: 100%; max-width: 360px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.overlay-box h2 { margin: 0; font-size: 22px; }
+.overlay-box .logo { font-size: 56px; }
+.overlay-box .btn { width: 100%; }
+.ring-wrap.big { width: 240px; height: 240px; }
+.ring-wrap.big .ring circle { stroke-width: 9; }
+.ring-wrap.big .ring-fg { transition: stroke-dashoffset .25s linear; }
+.ring-wrap.big .ring-label b { font-size: 56px; font-variant-numeric: tabular-nums; }
+.ring-wrap.big .ring-label span { font-size: 16px; margin-top: 4px; }
+.btn-col { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+
 /* Форма с подписанными полями (сон) */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
 .form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); min-width: 0; }

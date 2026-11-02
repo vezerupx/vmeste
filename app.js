@@ -9,7 +9,7 @@ const COLOR_CHOICES = ['#0f9b8e', '#e5487b', '#3b82f6', '#f59e0b', '#8b5cf6', '#
 const WATER_BUTTONS = [150, 250, 330, 500];
 // Увеличивайте при каждом обновлении: телефон увидит новую версию и сбросит старый кэш.
 // Номер виден внизу вкладки «Ещё».
-const APP_VERSION = 3;
+const APP_VERSION = 4;
 
 // ---------- даты и форматирование ----------
 const dayStr = (d = new Date()) => d.toLocaleDateString('sv-SE'); // YYYY-MM-DD по местному времени
@@ -21,7 +21,7 @@ const fmtDiff = (n) => (n > 0 ? '+' : n < 0 ? '−' : '±') + fmtKg(Math.abs(n))
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const state = {
-  tab: 'today', people: [], weights: [], water: [], steps: [], sleep: [],
+  tab: 'today', people: [], weights: [], water: [], steps: [], sleep: [], brushing: [],
   weightRange: 30, stepsRange: 7, sleepRange: 7,
 };
 
@@ -47,13 +47,13 @@ applyTheme(getTheme());
 // ---------- загрузка ----------
 async function loadAll() {
   const today = dayStr();
-  const [people, weights, water, steps, sleep] = await Promise.all([
+  const [people, weights, water, steps, sleep, brushing] = await Promise.all([
     api.profiles(), api.weights('2000-01-01'), api.water(today),
-    api.steps(addDays(today, -120)), api.sleep(addDays(today, -120)),
+    api.steps(addDays(today, -120)), api.sleep(addDays(today, -120)), api.brushing(addDays(today, -30)),
   ]);
   // Я всегда первый, партнёр второй — так проще раскладывать
   people.sort((a, b) => (a.id === api.uid ? -1 : b.id === api.uid ? 1 : a.id.localeCompare(b.id)));
-  Object.assign(state, { people, weights, water, steps, sleep, loadedDay: today });
+  Object.assign(state, { people, weights, water, steps, sleep, brushing, loadedDay: today });
 }
 
 async function refresh() {
@@ -99,14 +99,18 @@ const avgWake = (list) => fromMin(list.reduce((a, s) => a + toMin(s.wake), 0) / 
 
 // ---------- оценка: плохо / хорошо / отлично ----------
 const RATINGS = ['Плохо', 'Хорошо', 'Отлично'];
+// Зубы: сколько полных чисток за день; значение по умолчанию, если в config.js его нет
+const RATING = { teeth: [1, 2], ...CONFIG.RATING };
 const RATE_FMT = {
   water: (v) => `${fmtNum(v / 1000)} л`,
   steps: (v) => fmtNum(v),
   sleep: (v) => fmtDur(v),
 };
+// Подписи делений, где «меньше … / … и больше» звучит неестественно
+const RATE_RANGES = { teeth: ['ни разу', '1 раз', '2 раза'] };
 const rate = (kind, v) => {
   if (v == null) return null;
-  const [ok, great] = CONFIG.RATING[kind];
+  const [ok, great] = RATING[kind];
   return v >= great ? 2 : v >= ok ? 1 : 0;
 };
 const badge = (kind, v) => { const r = rate(kind, v); return r == null ? '' : `<span class="rate r${r}">${RATINGS[r]}</span>`; };
@@ -114,8 +118,8 @@ const badge = (kind, v) => { const r = rate(kind, v); return r == null ? '' : `<
 // Шкала из трёх делений с границами; текущее значение подсвечено
 function scale(kind, v) {
   const r = rate(kind, v);
-  const [ok, great] = CONFIG.RATING[kind].map(RATE_FMT[kind]);
-  const ranges = [`меньше ${ok}`, `${ok} – ${great}`, `${great} и больше`];
+  const [ok, great] = RATING[kind].map(RATE_FMT[kind] ?? String);
+  const ranges = RATE_RANGES[kind] ?? [`меньше ${ok}`, `${ok} – ${great}`, `${great} и больше`];
   return `<div class="scale">${RATINGS.map((name, i) =>
     `<div class="r${i}${r === i ? ' on' : ''}"><b>${name}</b><span>${ranges[i]}</span></div>`).join('')}</div>`;
 }
@@ -260,6 +264,8 @@ function viewToday() {
 
   ${sleepCard(m, today)}
 
+  ${teethCard(today)}
+
   <section class="card">
     <h2>👟 Шаги ${mySteps != null ? badge('steps', mySteps) : ''}</h2>
     <form data-form="steps" class="inline-form">
@@ -333,6 +339,48 @@ function sleepCard(m, today) {
   </section>`;
 }
 
+// Зубы: в норму идут только полные чистки (2:00); остановленные раньше видны красным
+const BRUSH_SEC = 120;
+const brushingOn = (uid, day) => state.brushing.filter((b) => b.user_id === uid && b.day === day);
+const fullBrushes = (uid, day) => brushingOn(uid, day).filter((b) => b.seconds >= BRUSH_SEC).length;
+const fmtSec = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const hm = (iso) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+function teethCard(today) {
+  const myCount = fullBrushes(api.uid, today);
+  const week = lastDays(7);
+  const session = (b) => b.seconds >= BRUSH_SEC
+    ? `<span class="brush ok">${hm(b.started_at)} · 2:00 ✓</span>`
+    : `<span class="brush short">${hm(b.started_at)} · ${fmtSec(b.seconds)} — остановлено раньше</span>`;
+  const cell = (p, d) => {
+    const n = fullBrushes(p.id, d);
+    const short = brushingOn(p.id, d).some((b) => b.seconds < BRUSH_SEC);
+    // Сегодняшний день ещё идёт — не красим его «плохо» заранее
+    const cls = d === today && n < 2 ? 'now' : `r${rate('teeth', n)}`;
+    return `<span class="wk ${cls}">${n}${short ? '<i>!</i>' : ''}</span>`;
+  };
+
+  return `<section class="card">
+    <h2>🪥 Зубы ${myCount ? badge('teeth', myCount) : ''}</h2>
+    <div class="teeth-main">
+      <div class="teeth-count"><b>${myCount}</b><span>из 2 сегодня</span></div>
+      <button class="btn" data-act="brush">${myCount >= 2 ? 'Почистить ещё раз' : 'Начать чистку · 2:00'}</button>
+    </div>
+    ${state.people.map((p) => {
+      const list = brushingOn(p.id, today);
+      return `<div class="person-row"><span class="dot" style="background:${colorOf(p)}"></span>
+        <span class="who">${esc(nameOf(p))}</span><span class="val">${fullBrushes(p.id, today)} из 2</span>
+        <span class="sub">${list.length ? list.map(session).join(' ') : 'сегодня чисток ещё не было'}</span></div>`;
+    }).join('')}
+    <div class="week">
+      <span></span>${week.map((d) => `<span class="wk-day">${fmtDay(d, { weekday: 'short' })}</span>`).join('')}
+      ${state.people.map((p) => `<span class="wk-who"><span class="dot" style="background:${colorOf(p)}"></span>${esc(nameOf(p))}</span>
+        ${week.map((d) => cell(p, d)).join('')}`).join('')}
+    </div>
+    <p class="hint">Цифра — полные чистки за день, «!» — была чистка, остановленная раньше 2 минут.</p>
+  </section>`;
+}
+
 function viewWeight() {
   const today = dayStr();
   const all = state.weights.map((w) => w.day).sort();
@@ -388,7 +436,7 @@ function viewSteps() {
       niceTop: (max) => Math.max(Math.ceil(max / 5000) * 5000, 5000),
       label: (v) => (v ? fmtNum(v / 1000) + 'к' : '0'),
       aria: 'График шагов',
-      guide: CONFIG.RATING.steps[1],
+      guide: RATING.steps[1],
     })}
     ${legend(state.people)}
     ${state.people.map((p) => {
@@ -433,7 +481,7 @@ function viewSleep() {
       niceTop: (max) => Math.max(Math.ceil(max / 2) * 2, 10),
       label: (v) => (v ? `${v} ч` : '0'),
       aria: 'График сна',
-      guide: CONFIG.RATING.sleep[1] / 60,
+      guide: RATING.sleep[1] / 60,
     })}
     ${legend(state.people)}
     ${state.people.map((p) => {
@@ -515,6 +563,7 @@ function viewSettings() {
     <p class="hint">💧 Вода</p>${scale('water', null)}
     <p class="hint">😴 Сон</p>${scale('sleep', null)}
     <p class="hint">👟 Шаги</p>${scale('steps', null)}
+    <p class="hint">🪥 Зубы (полных чисток за день)</p>${scale('teeth', null)}
   </section>
 
   ${!standalone ? `<section class="card">
@@ -587,6 +636,7 @@ app.addEventListener('click', (e) => {
   const d = b.dataset;
   switch (d.act) {
     case 'tab': state.tab = d.tab; render(); scrollTo(0, 0); break;
+    case 'brush': startBrushing(); break;
     case 'water': run(() => api.addWater(dayStr(), Number(d.ml)), `+${d.ml} мл`); break;
     case 'del-water': run(() => api.deleteWater(Number(d.id)), 'Удалено'); break;
     case 'del-weight': if (confirm('Удалить запись веса?')) run(() => api.deleteWeight(d.day), 'Удалено'); break;
@@ -625,6 +675,136 @@ app.addEventListener('submit', (e) => {
   }
 });
 
+// ---------- таймер чистки зубов ----------
+// Время считаем от момента старта, а не тиками: если экран погас или приложение
+// свернули, по возвращении таймер покажет правильное время. Старт хранится
+// в localStorage, чтобы чистка продолжилась и после перезапуска приложения.
+const BRUSH_MIN_SEC = 10; // короче — случайное нажатие, не записываем
+const ZONES = ['Верх слева', 'Верх справа', 'Низ справа', 'Низ слева'];
+let brush = null;   // { start, zone, confirming, timer, wake }
+let brushSave = null; // несохранённая чистка (на случай ошибки сети)
+let audioCtx;
+
+function beep(freq = 880, ms = 150, times = 1) {
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    for (let i = 0; i < times; i++) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      const t = audioCtx.currentTime + i * (ms / 1000 + 0.1);
+      o.frequency.value = freq;
+      o.connect(g); g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(0.25, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + ms / 1000);
+      o.start(t); o.stop(t + ms / 1000);
+    }
+  } catch { /* без звука */ }
+}
+
+const brushElapsed = () => Math.min((Date.now() - brush.start) / 1000, BRUSH_SEC);
+
+function startBrushing(start = Date.now()) {
+  if (brush) return;
+  try { localStorage.setItem('brush-start', String(start)); } catch { /* приватный режим */ }
+  brush = { start, zone: -1, confirming: false };
+  let el = $('#brush');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'brush'; el.className = 'overlay';
+    el.addEventListener('click', onBrushClick);
+    document.body.append(el);
+  }
+  // Не даём экрану погаснуть, пока идёт чистка (где поддерживается)
+  navigator.wakeLock?.request('screen').then((l) => { if (brush) brush.wake = l; else l.release(); }).catch(() => {});
+  beep(660, 120);
+  renderBrush();
+  brush.timer = setInterval(tickBrush, 250);
+}
+
+function resumeBrushing() {
+  let start;
+  try { start = Number(localStorage.getItem('brush-start')); } catch { return; }
+  if (!start) return;
+  // Брошенный давно таймер не восстанавливаем
+  if (Date.now() - start > 3 * 3600e3) { try { localStorage.removeItem('brush-start'); } catch { /* */ } return; }
+  startBrushing(start);
+}
+
+function renderBrush() {
+  const el = $('#brush');
+  el.innerHTML = `<div class="overlay-box">
+    <h2>🪥 Чистим зубы</h2>
+    <div class="ring-wrap big">${ring(0, BRUSH_SEC, colorOf(me()))}
+      <div class="ring-label"><b id="brush-left">2:00</b><span id="brush-zone"></span></div>
+    </div>
+    ${brush.confirming
+      ? `<p class="row-text">Прошло <b id="brush-done">0:00</b> из 2:00. Если остановить сейчас, чистка запишется
+          как <b>неполная</b> и не пойдёт в норму, и это будет видно.</p>
+        <div class="btn-col"><button class="btn" data-b="continue">Продолжить чистить</button>
+          <button class="btn ghost danger" data-b="stop">Всё равно остановить</button></div>`
+      : `<p class="hint">Каждые 30 секунд — сигнал и следующий участок.</p>
+        <button class="btn ghost" data-b="ask-stop">Остановить</button>`}
+  </div>`;
+  tickBrush();
+}
+
+function tickBrush() {
+  if (!brush) return;
+  const t = brushElapsed();
+  if (t >= BRUSH_SEC) { finishBrushing(BRUSH_SEC); return; }
+  const zone = Math.min(ZONES.length - 1, Math.floor(t / 30));
+  if (zone !== brush.zone) { if (brush.zone >= 0) beep(880, 150); brush.zone = zone; }
+  const c = 2 * Math.PI * 52; // длина окружности кольца из ring()
+  $('#brush .ring-fg')?.setAttribute('stroke-dashoffset', c * (1 - t / BRUSH_SEC));
+  $('#brush-left').textContent = fmtSec(Math.ceil(BRUSH_SEC - t));
+  $('#brush-zone').textContent = ZONES[zone];
+  const done = $('#brush-done');
+  if (done) done.textContent = fmtSec(t);
+}
+
+function finishBrushing(seconds) {
+  const { start, timer, wake } = brush;
+  clearInterval(timer);
+  wake?.release().catch(() => {});
+  brush = null;
+  try { localStorage.removeItem('brush-start'); } catch { /* */ }
+  if (seconds < BRUSH_MIN_SEC) { $('#brush')?.remove(); toast('Меньше 10 секунд — не записываем'); return; }
+  if (seconds >= BRUSH_SEC) beep(990, 180, 3);
+  brushSave = { day: dayStr(new Date(start)), startedAt: new Date(start).toISOString(), seconds: Math.round(seconds) };
+  saveBrushing();
+}
+
+async function saveBrushing() {
+  const el = $('#brush');
+  const { seconds } = brushSave;
+  const full = seconds >= BRUSH_SEC;
+  const title = full ? 'Отлично, 2 минуты! ✨' : `Неполная чистка: ${fmtSec(seconds)}`;
+  el.innerHTML = `<div class="overlay-box"><h2>${title}</h2><p class="hint">Сохраняю…</p></div>`;
+  try {
+    await api.addBrushing(brushSave.day, brushSave.startedAt, seconds);
+    brushSave = null;
+    await loadAll(); render();
+    const n = fullBrushes(api.uid, dayStr());
+    el.innerHTML = `<div class="overlay-box">
+      <div class="logo">${full ? '😁' : '⏱'}</div><h2>${title}</h2>
+      <p class="row-text">${full ? `Сегодня засчитано ${n} из 2.` : 'В норму не засчитано. Сегодня полных чисток: ' + n + ' из 2.'}</p>
+      <button class="btn" data-b="close">Готово</button></div>`;
+  } catch (e) {
+    el.innerHTML = `<div class="overlay-box"><h2>${title}</h2>
+      <p class="row-text">Не удалось сохранить: ${esc(errText(e))}</p>
+      <div class="btn-col"><button class="btn" data-b="retry">Повторить</button>
+        <button class="btn ghost danger" data-b="close">Не сохранять</button></div></div>`;
+  }
+}
+
+function onBrushClick(e) {
+  const b = e.target.closest('[data-b]')?.dataset.b;
+  if (b === 'ask-stop') { brush.confirming = true; renderBrush(); }
+  if (b === 'continue') { brush.confirming = false; renderBrush(); }
+  if (b === 'stop') finishBrushing(brushElapsed());
+  if (b === 'retry') saveBrushing();
+  if (b === 'close') { brushSave = null; $('#brush')?.remove(); }
+}
+
 // ---------- push ----------
 function b64ToBytes(b64) {
   const s = atob((b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
@@ -660,6 +840,7 @@ async function start() {
       if ('Notification' in window && Notification.permission === 'granted' && CONFIG.VAPID_PUBLIC_KEY) subscribePush().catch(() => {});
     }
     render();
+    resumeBrushing();
   } catch (e) {
     app.innerHTML = `<div class="login"><div class="logo">⚠️</div><p>${esc(errText(e))}</p>
       <button class="btn" onclick="location.reload()">Повторить</button></div>`;
