@@ -1,10 +1,12 @@
 // Service worker: кэширует файлы приложения и показывает push-уведомления.
-// После изменения файлов приложения увеличьте VERSION, чтобы телефоны получили обновление.
-const VERSION = 'v2';
+// Версия приходит из app.js (sw.js?v=3): при её смене телефон ставит новый service worker и чистит старый кэш.
+const VERSION = 'v' + (new URL(location.href).searchParams.get('v') || '0');
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'api.js', 'config.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION)
+    .then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -14,12 +16,13 @@ self.addEventListener('activate', (e) => {
 });
 
 // Сначала сеть (чтобы обновления приходили сразу), без сети — из кэша.
+// cache: 'no-cache' — не брать файлы из кэша браузера (GitHub разрешает хранить их 10 минут).
 // Запросы к базе и чужим сайтам не трогаем.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(url.href, { cache: 'no-cache' })
       .then((res) => { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); return res; })
       .catch(() => caches.match(e.request).then((r) => r || caches.match('./'))),
   );

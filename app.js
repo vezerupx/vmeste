@@ -7,6 +7,9 @@ const GOAL = CONFIG.WATER_GOAL_ML;
 const DEFAULT_COLORS = ['#0f9b8e', '#e5487b'];
 const COLOR_CHOICES = ['#0f9b8e', '#e5487b', '#3b82f6', '#f59e0b', '#8b5cf6', '#22a35a'];
 const WATER_BUTTONS = [150, 250, 330, 500];
+// Увеличивайте при каждом обновлении: телефон увидит новую версию и сбросит старый кэш.
+// Номер виден внизу вкладки «Ещё».
+const APP_VERSION = 3;
 
 // ---------- даты и форматирование ----------
 const dayStr = (d = new Date()) => d.toLocaleDateString('sv-SE'); // YYYY-MM-DD по местному времени
@@ -529,7 +532,8 @@ function viewSettings() {
       ? `<p class="row-text">Демо-режим: данные хранятся только в этом браузере.</p>
          <button class="btn ghost" data-act="demo-switch">Войти как «${esc(nameOf(partner()))}»</button>`
       : '<button class="btn ghost danger" data-act="logout">Выйти</button>'}
-  </section>`;
+  </section>
+  <p class="hint version">Версия приложения: ${APP_VERSION}</p>`;
 }
 
 function viewLogin() {
@@ -667,5 +671,5 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && api.uid) refresh();
 });
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register(`./sw.js?v=${APP_VERSION}`).catch(() => {});
 start();

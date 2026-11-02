@@ -190,6 +190,7 @@ input[type="time"], input[type="date"] { -webkit-appearance: none; appearance: n
 .plain { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
 .plain li { margin: 4px 0; }
 .row-text { margin: 0 0 10px; }
+.hint.version { text-align: center; margin: 4px 0 0; }
 
 /* Нижняя навигация */
 .tabs {
