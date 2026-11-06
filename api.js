@@ -31,7 +31,7 @@ async function supabaseApi() {
     setWeight: async (day, kg) => ok(await sb.from('weights').upsert({ user_id: uid, day, kg })),
     deleteWeight: async (day) => ok(await sb.from('weights').delete().eq('user_id', uid).eq('day', day)),
 
-    water: async (day) => ok(await sb.from('water').select('*').eq('day', day).order('created_at')),
+    water: async (from) => ok(await sb.from('water').select('*').gte('day', from).order('created_at')),
     addWater: async (day, ml) => ok(await sb.from('water').insert({ user_id: uid, day, ml })),
     deleteWater: async (id) => ok(await sb.from('water').delete().eq('id', id)),
 
@@ -87,7 +87,7 @@ function demoApi() {
     },
     deleteWeight: async (day) => { db.weights = db.weights.filter((w) => !(w.user_id === db.uid && w.day === day)); save(); },
 
-    water: async (day) => db.water.filter((w) => w.day === day),
+    water: async (from) => db.water.filter((w) => w.day >= from),
     addWater: async (day, ml) => { db.water.push({ id: db.seq++, user_id: db.uid, day, ml, created_at: new Date().toISOString() }); save(); },
     deleteWater: async (id) => { db.water = db.water.filter((w) => w.id !== id); save(); },
 

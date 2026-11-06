@@ -9,7 +9,7 @@ const COLOR_CHOICES = ['#0f9b8e', '#e5487b', '#3b82f6', '#f59e0b', '#8b5cf6', '#
 const WATER_BUTTONS = [150, 250, 330, 500];
 // Увеличивайте при каждом обновлении: телефон увидит новую версию и сбросит старый кэш.
 // Номер виден внизу вкладки «Ещё».
-const APP_VERSION = 4;
+const APP_VERSION = 5;
 
 // ---------- даты и форматирование ----------
 const dayStr = (d = new Date()) => d.toLocaleDateString('sv-SE'); // YYYY-MM-DD по местному времени
@@ -48,7 +48,7 @@ applyTheme(getTheme());
 async function loadAll() {
   const today = dayStr();
   const [people, weights, water, steps, sleep, brushing] = await Promise.all([
-    api.profiles(), api.weights('2000-01-01'), api.water(today),
+    api.profiles(), api.weights('2000-01-01'), api.water(addDays(today, -2)),
     api.steps(addDays(today, -120)), api.sleep(addDays(today, -120)), api.brushing(addDays(today, -30)),
   ]);
   // Я всегда первый, партнёр второй — так проще раскладывать
@@ -78,7 +78,8 @@ function toast(text) {
 }
 
 // ---------- расчёты ----------
-const waterTotal = (uid) => state.water.filter((w) => w.user_id === uid).reduce((s, w) => s + w.ml, 0);
+const waterOf = (uid) => state.water.filter((w) => w.user_id === uid && w.day === logicalDay(uid));
+const waterTotal = (uid) => waterOf(uid).reduce((s, w) => s + w.ml, 0);
 const weightsOf = (uid) => state.weights.filter((w) => w.user_id === uid).map((w) => ({ ...w, kg: Number(w.kg) }));
 const stepsOn = (uid, day) => state.steps.find((s) => s.user_id === uid && s.day === day)?.steps;
 const sleepOn = (uid, day) => state.sleep.find((s) => s.user_id === uid && s.day === day);
@@ -87,6 +88,14 @@ const fullSleepOn = (uid, day) => { const s = sleepOn(uid, day); return s?.wake 
 const nowHM = () => new Date().toTimeString().slice(0, 5);
 // На какую ночь записать отбой: днём и вечером — на завтрашнее утро, после полуночи — на сегодняшнее
 const bedNightDay = () => (new Date().getHours() >= 12 ? addDays(dayStr(), 1) : dayStr());
+
+// День для воды, зубов и шагов заканчивается нажатием «Ложусь прямо сейчас», а не в полночь.
+// Если кнопку забыли нажать, новый день всё равно начинается в 12:00 следующей даты.
+const dayFloor = () => (new Date().getHours() >= 12 ? dayStr() : addDays(dayStr(), -1));
+const latestSleep = (uid) => state.sleep.filter((s) => s.user_id === uid).reduce((a, s) => (!a || s.day > a.day ? s : a), null);
+const logicalDay = (uid) => { const last = latestSleep(uid)?.day, floor = dayFloor(); return last && last > floor ? last : floor; };
+// Человек нажал «Ложусь» и ещё не нажал «Проснулся»
+const pendingSleep = (uid) => { const s = latestSleep(uid); return s && !s.wake && s.day >= dayFloor() ? s : null; };
 
 // Сон: время «ЧЧ:ММ» → минуты от полуночи; длительность считаем через полночь
 const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
@@ -197,7 +206,7 @@ function barChart(days, people, { valueOf, niceTop, label, aria, guide }) {
 const legend = (people) => `<div class="legend">${people.map((p) =>
   `<span><i style="background:${colorOf(p)}"></i>${esc(nameOf(p))}</span>`).join('')}</div>`;
 
-const lastDays = (n) => { const today = dayStr(); return Array.from({ length: n }, (_, i) => addDays(today, i - n + 1)); };
+const lastDays = (n, end = dayStr()) => Array.from({ length: n }, (_, i) => addDays(end, i - n + 1));
 
 const seg = (act, current, options) => `<div class="seg">${options.map(([v, l]) =>
   `<button data-act="${act}" data-v="${v}" class="${current === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
@@ -206,10 +215,11 @@ const seg = (act, current, options) => `<div class="seg">${options.map(([v, l]) 
 function viewToday() {
   const today = dayStr();
   const m = me(), pt = partner();
+  const myDay = logicalDay(m.id);
   const myWater = waterTotal(m.id);
-  const myEntries = state.water.filter((w) => w.user_id === m.id);
+  const myEntries = waterOf(m.id);
   const myWeight = weightsOf(m.id).find((w) => w.day === today);
-  const mySteps = stepsOn(m.id, today);
+  const mySteps = stepsOn(m.id, myDay);
 
   const weightRow = (p) => {
     const ws = weightsOf(p.id);
@@ -226,7 +236,9 @@ function viewToday() {
   };
 
   return `
-  <header class="top"><h1>Сегодня</h1><span class="date">${fmtDay(today, { weekday: 'long', day: 'numeric', month: 'long' })}</span></header>
+  <header class="top"><h1>Сегодня</h1><span class="date">${fmtDay(myDay, { weekday: 'long', day: 'numeric', month: 'long' })}</span></header>
+
+  ${sleepCard(m, today)}
 
   <section class="card">
     <h2>💧 Вода ${myWater ? badge('water', myWater) : ''}</h2>
@@ -262,81 +274,92 @@ function viewToday() {
     ${state.people.map(weightRow).join('')}
   </section>
 
-  ${sleepCard(m, today)}
-
-  ${teethCard(today)}
+  ${teethCard()}
 
   <section class="card">
     <h2>👟 Шаги ${mySteps != null ? badge('steps', mySteps) : ''}</h2>
     <form data-form="steps" class="inline-form">
-      <input name="steps" type="number" inputmode="numeric" min="0" max="199999" placeholder="Мои шаги за сегодня"
+      <input name="steps" type="number" inputmode="numeric" min="0" max="199999" placeholder="Мои шаги за день"
         value="${mySteps ?? ''}" required>
       <button class="btn">${mySteps != null ? 'Изменить' : 'Записать'}</button>
     </form>
     ${mySteps != null ? scale('steps', mySteps) : ''}
     ${state.people.map((p) => {
-      const s = stepsOn(p.id, today);
+      const s = stepsOn(p.id, logicalDay(p.id));
       return `<div class="person-row"><span class="dot" style="background:${colorOf(p)}"></span>
         <span class="who">${esc(nameOf(p))}</span><span class="val">${s != null ? fmtNum(s) : '—'}</span>
         <span class="sub">${s != null ? `шагов ${badge('steps', s)}` : 'ещё не внесено'}</span></div>`;
     }).join('')}
-    <p class="hint">Шаги смотрите в приложении «Здоровье» и вносите вечером, до 23:00.</p>
+    <p class="hint">Шаги смотрите в приложении «Здоровье» и вносите перед сном, до нажатия «Ложусь прямо сейчас».</p>
   </section>`;
 }
 
-// Сон в два шага: вечером записываем отбой, утром одной кнопкой отмечаем подъём.
-// Ночь хранится на дату пробуждения: last — ночь, после которой проснулись сегодня,
-// next — отбой, записанный на предстоящую ночь.
+// Главная кнопка дня: «Ложусь прямо сейчас» доступна круглосуточно и меняется на «Проснулся»
+// только после нажатия. Ручная форма остаётся на случай, если кнопку забыли нажать.
 function sleepCard(m, today) {
-  const hour = new Date().getHours();
-  const afternoon = hour >= 12;
-  const last = sleepOn(m.id, today);
-  const next = sleepOn(m.id, addDays(today, 1));
-  const lastForm = () => `<form data-form="sleep" class="form-grid">
-      <label>Лёг<input name="bed" type="time" value="${last?.bed ?? ''}" required></label>
-      <label>Встал<input name="wake" type="time" value="${last?.wake ?? ''}"></label>
+  const pending = pendingSleep(m.id);
+  const myDay = logicalDay(m.id);
+  const manualDay = myDay > today ? myDay : today;
+  const manual = sleepOn(m.id, manualDay);
+  const forgot = !pending && myDay < today && new Date().getHours() >= 5;
+  const manualForm = `<form data-form="sleep" class="form-grid">
+      <input type="hidden" name="day" value="${manualDay}">
+      <label>Лёг<input name="bed" type="time" value="${manual?.bed ?? ''}" required></label>
+      <label>Встал<input name="wake" type="time" value="${manual?.wake ?? ''}" required></label>
       <button class="btn full">Сохранить</button>
     </form>`;
 
-  let morning;
-  if (last && !last.wake) {
-    const greet = hour < 5 ? 'Утром отметьте подъём.' : afternoon ? 'Во сколько проснулись?' : 'Доброе утро!';
-    morning = `<p class="row-text">🌙 Отбой был в <b>${last.bed}</b>. ${greet}</p>
-      <form data-form="wake" class="inline-form">
-        <input name="wake" type="time" value="${nowHM()}" required>
-        <button class="btn">Проснулся</button>
-      </form>`;
-  } else if (last) {
-    morning = `${scale('sleep', sleepMin(last))}
-      <details class="edit"><summary>Прошлая ночь: ${last.bed} – ${last.wake} · изменить</summary>${lastForm()}</details>`;
-  } else if (!afternoon) {
-    morning = `<p class="row-text">Во сколько легли и проснулись? Если ещё не ложились, укажите только «Лёг».</p>${lastForm()}`;
+  let main;
+  if (pending) {
+    main = `<p class="row-text">🌙 Отбой в <b>${pending.bed}</b>. Счётчики нового дня уже обнулены.</p>
+      <button class="btn big sun" data-act="wake-now">☀️ Проснулся</button>
+      <details class="edit"><summary>Указать другое время подъёма</summary>
+        <form data-form="wake" class="inline-form">
+          <input name="wake" type="time" value="${nowHM()}" required>
+          <button class="btn">Сохранить</button>
+        </form></details>
+      <details class="edit"><summary>Изменить время отбоя</summary>
+        <form data-form="bed-edit" class="inline-form">
+          <input name="bed" type="time" value="${pending.bed}" required>
+          <button class="btn">Сохранить</button>
+        </form></details>
+      <button class="link-btn" data-act="bed-undo">Нажато случайно — отменить отбой</button>`;
   } else {
-    morning = `<details class="edit"><summary>Внести прошлую ночь</summary>${lastForm()}</details>`;
+    main = `<button class="btn big night" data-act="bed-now">🌙 Ложусь прямо сейчас</button>
+      ${forgot ? `<div class="note">Кнопка вчера не нажата, поэтому ещё идёт ${fmtDay(myDay)}.
+        Уже проснулись? Запишите сон, и начнётся новый день.</div>${manualForm}`
+        : manual?.wake ? `${scale('sleep', sleepMin(manual))}
+          <details class="edit"><summary>Прошлая ночь: ${manual.bed} – ${manual.wake} · изменить</summary>${manualForm}</details>`
+        : `<details class="edit"><summary>Забыли нажать? Вписать сон вручную</summary>${manualForm}</details>`}`;
   }
 
-  const evening = afternoon ? `<div class="bedtime">
-      <p class="row-text">${next ? `🌙 Сегодня отбой в <b>${next.bed}</b>` : 'Во сколько ложитесь сегодня?'}</p>
-      <form data-form="bed" class="inline-form">
-        <input name="bed" type="time" value="${next?.bed ?? ''}" required>
-        <button class="btn">${next ? 'Изменить' : 'Записать'}</button>
-      </form>
-      ${next ? '' : '<button type="button" class="chip wide" data-act="bed-now">🌙 Ложусь прямо сейчас</button>'}
-    </div>` : '';
-
   return `<section class="card">
-    <h2>😴 Сон ${last?.wake ? badge('sleep', sleepMin(last)) : ''}</h2>
-    ${morning}
-    ${evening}
+    <h2>😴 Сон ${!pending && manual?.wake ? badge('sleep', sleepMin(manual)) : ''}</h2>
+    ${main}
     ${state.people.map((p) => {
-      const s = sleepOn(p.id, today), n = sleepOn(p.id, addDays(today, 1));
-      const sub = s?.wake ? `${s.bed} – ${s.wake} ${badge('sleep', sleepMin(s))}`
-        : s ? `отбой в ${s.bed}, подъём не отмечен` : 'ещё не внесено';
+      const asleep = pendingSleep(p.id);
+      const s = fullSleepOn(p.id, logicalDay(p.id));
       return `<div class="person-row"><span class="dot" style="background:${colorOf(p)}"></span>
-        <span class="who">${esc(nameOf(p))}</span><span class="val">${s?.wake ? fmtDur(sleepMin(s)) : '—'}</span>
-        <span class="sub">${sub}${n ? ` · сегодня отбой в ${n.bed}` : ''}</span></div>`;
+        <span class="who">${esc(nameOf(p))}</span><span class="val">${s ? fmtDur(sleepMin(s)) : '—'}</span>
+        <span class="sub">${asleep ? `🌙 спит с ${asleep.bed}` : s ? `${s.bed} – ${s.wake} ${badge('sleep', sleepMin(s))}` : 'ещё не внесено'}</span></div>`;
     }).join('')}
   </section>`;
+}
+
+// Нажатие могло перезаписать ночь на эту дату — запоминаем её, чтобы отмена всё вернула
+async function goToBed() {
+  const day = bedNightDay();
+  const prev = sleepOn(api.uid, day);
+  try { localStorage.setItem('bed-undo', JSON.stringify({ day, bed: prev?.bed ?? null, wake: prev?.wake ?? null })); } catch { /* приватный режим */ }
+  await api.setSleep(day, nowHM(), null);
+}
+
+async function undoBed() {
+  const { day } = pendingSleep(api.uid);
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('bed-undo')); localStorage.removeItem('bed-undo'); } catch { /* */ }
+  if (saved?.day === day && saved.bed) await api.setSleep(day, saved.bed, saved.wake);
+  else await api.deleteSleep(day);
 }
 
 // Зубы: в норму идут только полные чистки (2:00); остановленные раньше видны красным
@@ -346,31 +369,31 @@ const fullBrushes = (uid, day) => brushingOn(uid, day).filter((b) => b.seconds >
 const fmtSec = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const hm = (iso) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
-function teethCard(today) {
-  const myCount = fullBrushes(api.uid, today);
-  const week = lastDays(7);
+function teethCard() {
+  const myCount = fullBrushes(api.uid, logicalDay(api.uid));
+  const week = lastDays(7, logicalDay(api.uid));
   const session = (b) => b.seconds >= BRUSH_SEC
     ? `<span class="brush ok">${hm(b.started_at)} · 2:00 ✓</span>`
     : `<span class="brush short">${hm(b.started_at)} · ${fmtSec(b.seconds)} — остановлено раньше</span>`;
   const cell = (p, d) => {
     const n = fullBrushes(p.id, d);
     const short = brushingOn(p.id, d).some((b) => b.seconds < BRUSH_SEC);
-    // Сегодняшний день ещё идёт — не красим его «плохо» заранее
-    const cls = d === today && n < 2 ? 'now' : `r${rate('teeth', n)}`;
+    // Текущий день ещё идёт — не красим его «плохо» заранее
+    const cls = d >= logicalDay(p.id) && n < 2 ? 'now' : `r${rate('teeth', n)}`;
     return `<span class="wk ${cls}">${n}${short ? '<i>!</i>' : ''}</span>`;
   };
 
   return `<section class="card">
     <h2>🪥 Зубы ${myCount ? badge('teeth', myCount) : ''}</h2>
     <div class="teeth-main">
-      <div class="teeth-count"><b>${myCount}</b><span>из 2 сегодня</span></div>
+      <div class="teeth-count"><b>${myCount}</b><span>из 2 за день</span></div>
       <button class="btn" data-act="brush">${myCount >= 2 ? 'Почистить ещё раз' : 'Начать чистку · 2:00'}</button>
     </div>
     ${state.people.map((p) => {
-      const list = brushingOn(p.id, today);
+      const list = brushingOn(p.id, logicalDay(p.id));
       return `<div class="person-row"><span class="dot" style="background:${colorOf(p)}"></span>
-        <span class="who">${esc(nameOf(p))}</span><span class="val">${fullBrushes(p.id, today)} из 2</span>
-        <span class="sub">${list.length ? list.map(session).join(' ') : 'сегодня чисток ещё не было'}</span></div>`;
+        <span class="who">${esc(nameOf(p))}</span><span class="val">${fullBrushes(p.id, logicalDay(p.id))} из 2</span>
+        <span class="sub">${list.length ? list.map(session).join(' ') : 'за этот день чисток ещё не было'}</span></div>`;
     }).join('')}
     <div class="week">
       <span></span>${week.map((d) => `<span class="wk-day">${fmtDay(d, { weekday: 'short' })}</span>`).join('')}
@@ -554,8 +577,10 @@ function viewSettings() {
     <ul class="plain">
       <li>08:00: взвеситься, если вес ещё не записан</li>
       <li>9, 11, 13, 15, 17, 19, 21 ч: выпить воды, пока не набрано ${fmtNum(GOAL)} мл</li>
-      <li>23:00: внести шаги, если за сегодня их нет</li>
+      <li>23:00: внести шаги, если за день их нет</li>
+      <li>12:00: нажать «Проснулся», если кнопка ещё не нажата</li>
     </ul>
+    <p class="hint">После «Ложусь прямо сейчас» про воду и шаги не напоминаем, пока вы не нажмёте «Проснулся».</p>
   </section>
 
   <section class="card">
@@ -637,11 +662,13 @@ app.addEventListener('click', (e) => {
   switch (d.act) {
     case 'tab': state.tab = d.tab; render(); scrollTo(0, 0); break;
     case 'brush': startBrushing(); break;
-    case 'water': run(() => api.addWater(dayStr(), Number(d.ml)), `+${d.ml} мл`); break;
+    case 'water': run(() => api.addWater(logicalDay(api.uid), Number(d.ml)), `+${d.ml} мл`); break;
     case 'del-water': run(() => api.deleteWater(Number(d.id)), 'Удалено'); break;
     case 'del-weight': if (confirm('Удалить запись веса?')) run(() => api.deleteWeight(d.day), 'Удалено'); break;
     case 'del-steps': if (confirm('Удалить запись шагов?')) run(() => api.deleteSteps(d.day), 'Удалено'); break;
-    case 'bed-now': run(() => api.setSleep(bedNightDay(), nowHM(), null), 'Спокойной ночи 🌙'); break;
+    case 'bed-now': run(goToBed, 'Спокойной ночи 🌙'); break;
+    case 'bed-undo': run(undoBed, 'Отбой отменён'); break;
+    case 'wake-now': { const p = pendingSleep(api.uid); run(() => api.setSleep(p.day, p.bed, nowHM()), 'Доброе утро ☀️'); break; }
     case 'del-sleep': if (confirm('Удалить запись сна?')) run(() => api.deleteSleep(d.day), 'Удалено'); break;
     case 'wrange': state.weightRange = Number(d.v); render(); break;
     case 'srange': state.stepsRange = Number(d.v); render(); break;
@@ -662,14 +689,14 @@ app.addEventListener('submit', (e) => {
     case 'login':
       api.signIn(v.email.trim(), v.password).then(() => start(), (er) => toast(errText(er)));
       break;
-    case 'water': run(() => api.addWater(dayStr(), Math.round(num(v.ml))), `+${v.ml} мл`); break;
+    case 'water': run(() => api.addWater(logicalDay(api.uid), Math.round(num(v.ml))), `+${v.ml} мл`); break;
     case 'weight': run(() => api.setWeight(dayStr(), Math.round(num(v.kg) * 10) / 10), 'Вес записан'); break;
     case 'weight-day': run(() => api.setWeight(v.day, Math.round(num(v.kg) * 10) / 10), 'Сохранено'); break;
-    case 'steps': run(() => api.setSteps(dayStr(), Math.round(num(v.steps))), 'Шаги записаны'); break;
+    case 'steps': run(() => api.setSteps(logicalDay(api.uid), Math.round(num(v.steps))), 'Шаги записаны'); break;
     case 'steps-day': run(() => api.setSteps(v.day, Math.round(num(v.steps))), 'Сохранено'); break;
-    case 'sleep': run(() => api.setSleep(dayStr(), v.bed, v.wake || null), 'Сон записан'); break;
-    case 'bed': run(() => api.setSleep(bedNightDay(), v.bed, null), 'Спокойной ночи 🌙'); break;
-    case 'wake': run(() => api.setSleep(dayStr(), sleepOn(api.uid, dayStr()).bed, v.wake), 'Доброе утро ☀️'); break;
+    case 'sleep': run(() => api.setSleep(v.day, v.bed, v.wake), 'Сон записан'); break;
+    case 'bed-edit': { const p = pendingSleep(api.uid); run(() => api.setSleep(p.day, v.bed, null), 'Время отбоя изменено'); break; }
+    case 'wake': { const p = pendingSleep(api.uid); run(() => api.setSleep(p.day, p.bed, v.wake), 'Доброе утро ☀️'); break; }
     case 'sleep-day': run(() => api.setSleep(v.day, v.bed, v.wake), 'Сохранено'); break;
     case 'profile': run(() => api.saveProfile({ name: v.name.trim(), ...(v.color ? { color: v.color } : {}) }), 'Сохранено'); break;
   }
@@ -685,19 +712,34 @@ let brush = null;   // { start, zone, confirming, timer, wake }
 let brushSave = null; // несохранённая чистка (на случай ошибки сети)
 let audioCtx;
 
-function beep(freq = 880, ms = 150, times = 1) {
+// Сигнал рассчитан на динамик телефона: прямоугольная волна в районе 2 кГц, где он играет громче
+// всего, на полной громкости. Режим playback нужен, чтобы звук не глушил беззвучный режим iPhone.
+function beep(freq = 1760, ms = 320, times = 1) {
   try {
+    if (navigator.audioSession) navigator.audioSession.type = 'playback';
     audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume?.();
+    const limiter = audioCtx.createDynamicsCompressor();
+    limiter.connect(audioCtx.destination);
     for (let i = 0; i < times; i++) {
       const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-      const t = audioCtx.currentTime + i * (ms / 1000 + 0.1);
+      const t = audioCtx.currentTime + 0.02 + i * (ms / 1000 + 0.12);
+      o.type = 'square';
       o.frequency.value = freq;
-      o.connect(g); g.connect(audioCtx.destination);
-      g.gain.setValueAtTime(0.25, t);
+      o.connect(g); g.connect(limiter);
+      g.gain.setValueAtTime(1, t);
+      g.gain.setValueAtTime(1, t + (ms / 1000) * 0.8);
       g.gain.exponentialRampToValueAtTime(0.001, t + ms / 1000);
       o.start(t); o.stop(t + ms / 1000);
     }
   } catch { /* без звука */ }
+}
+
+function stopBrushVideo() {
+  const v = $('#brush-video');
+  if (v) { v.pause(); v.remove(); }
+  // Режим звука возвращаем с задержкой, чтобы успел доиграть финальный сигнал
+  setTimeout(() => { if (!brush && navigator.audioSession) navigator.audioSession.type = 'auto'; }, 2500);
 }
 
 const brushElapsed = () => Math.min((Date.now() - brush.start) / 1000, BRUSH_SEC);
@@ -709,13 +751,20 @@ function startBrushing(start = Date.now()) {
   let el = $('#brush');
   if (!el) {
     el = document.createElement('div');
-    el.id = 'brush'; el.className = 'overlay';
+    el.id = 'brush';
     el.addEventListener('click', onBrushClick);
     document.body.append(el);
   }
+  el.className = 'overlay running';
+  // Видео и панель отдельно: панель перерисовывается, а видео при этом не прерывается
+  el.innerHTML = `<video id="brush-video" src="media/brushing.mp4" loop muted playsinline autoplay preload="auto" aria-hidden="true"></video>
+    <div id="brush-ui"></div>`;
+  const video = $('#brush-video');
+  video.muted = true;
+  video.play().catch(() => {});
   // Не даём экрану погаснуть, пока идёт чистка (где поддерживается)
   navigator.wakeLock?.request('screen').then((l) => { if (brush) brush.wake = l; else l.release(); }).catch(() => {});
-  beep(660, 120);
+  beep(1320, 220);
   renderBrush();
   brush.timer = setInterval(tickBrush, 250);
 }
@@ -730,8 +779,7 @@ function resumeBrushing() {
 }
 
 function renderBrush() {
-  const el = $('#brush');
-  el.innerHTML = `<div class="overlay-box">
+  $('#brush-ui').innerHTML = `<div class="overlay-box">
     <h2>🪥 Чистим зубы</h2>
     <div class="ring-wrap big">${ring(0, BRUSH_SEC, colorOf(me()))}
       <div class="ring-label"><b id="brush-left">2:00</b><span id="brush-zone"></span></div>
@@ -752,7 +800,7 @@ function tickBrush() {
   const t = brushElapsed();
   if (t >= BRUSH_SEC) { finishBrushing(BRUSH_SEC); return; }
   const zone = Math.min(ZONES.length - 1, Math.floor(t / 30));
-  if (zone !== brush.zone) { if (brush.zone >= 0) beep(880, 150); brush.zone = zone; }
+  if (zone !== brush.zone) { if (brush.zone >= 0) beep(); brush.zone = zone; }
   const c = 2 * Math.PI * 52; // длина окружности кольца из ring()
   $('#brush .ring-fg')?.setAttribute('stroke-dashoffset', c * (1 - t / BRUSH_SEC));
   $('#brush-left').textContent = fmtSec(Math.ceil(BRUSH_SEC - t));
@@ -767,14 +815,16 @@ function finishBrushing(seconds) {
   wake?.release().catch(() => {});
   brush = null;
   try { localStorage.removeItem('brush-start'); } catch { /* */ }
+  if (seconds >= BRUSH_SEC) beep(2093, 360, 3);
+  stopBrushVideo();
   if (seconds < BRUSH_MIN_SEC) { $('#brush')?.remove(); toast('Меньше 10 секунд — не записываем'); return; }
-  if (seconds >= BRUSH_SEC) beep(990, 180, 3);
-  brushSave = { day: dayStr(new Date(start)), startedAt: new Date(start).toISOString(), seconds: Math.round(seconds) };
+  brushSave = { day: logicalDay(api.uid), startedAt: new Date(start).toISOString(), seconds: Math.round(seconds) };
   saveBrushing();
 }
 
 async function saveBrushing() {
   const el = $('#brush');
+  el.className = 'overlay';
   const { seconds } = brushSave;
   const full = seconds >= BRUSH_SEC;
   const title = full ? 'Отлично, 2 минуты! ✨' : `Неполная чистка: ${fmtSec(seconds)}`;
@@ -783,10 +833,10 @@ async function saveBrushing() {
     await api.addBrushing(brushSave.day, brushSave.startedAt, seconds);
     brushSave = null;
     await loadAll(); render();
-    const n = fullBrushes(api.uid, dayStr());
+    const n = fullBrushes(api.uid, logicalDay(api.uid));
     el.innerHTML = `<div class="overlay-box">
       <div class="logo">${full ? '😁' : '⏱'}</div><h2>${title}</h2>
-      <p class="row-text">${full ? `Сегодня засчитано ${n} из 2.` : 'В норму не засчитано. Сегодня полных чисток: ' + n + ' из 2.'}</p>
+      <p class="row-text">${full ? `За день засчитано ${n} из 2.` : 'В норму не засчитано. Полных чисток за день: ' + n + ' из 2.'}</p>
       <button class="btn" data-b="close">Готово</button></div>`;
   } catch (e) {
     el.innerHTML = `<div class="overlay-box"><h2>${title}</h2>
@@ -847,9 +897,11 @@ async function start() {
   }
 }
 
-// Вернулись в приложение: подтягиваем свежие данные партнёра, а после полуночи переходим на новый день
+// Вернулись в приложение: подтягиваем свежие данные партнёра и снова запускаем видео чистки (iOS его останавливает)
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && api.uid) refresh();
+  if (document.visibilityState !== 'visible') return;
+  $('#brush-video')?.play().catch(() => {});
+  if (api.uid) refresh();
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register(`./sw.js?v=${APP_VERSION}`).catch(() => {});

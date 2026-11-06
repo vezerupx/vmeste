@@ -17,10 +17,11 @@ self.addEventListener('activate', (e) => {
 
 // Сначала сеть (чтобы обновления приходили сразу), без сети — из кэша.
 // cache: 'no-cache' — не брать файлы из кэша браузера (GitHub разрешает хранить их 10 минут).
-// Запросы к базе и чужим сайтам не трогаем.
+// Запросы к базе и чужим сайтам не трогаем. Видео тоже: iPhone запрашивает его кусками,
+// и через service worker оно бы не воспроизвелось.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.endsWith('.mp4')) return;
   e.respondWith(
     fetch(url.href, { cache: 'no-cache' })
       .then((res) => { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); return res; })
