@@ -1,48 +1,40 @@
-/* Дизайн liquid glass: цветной фон, поверх него полупрозрачные панели с размытием,
-   бликом по верхнему краю и светлой окантовкой. */
+/* Дизайн liquid glass на чистом фоне: белом в светлой теме и чёрном в тёмной.
+   Панели полупрозрачные, с размытием, бликом по верхнему краю и тонкой окантовкой. */
 :root {
-  --bg: #e9f1ef;
-  --blob-1: rgba(20, 184, 166, .55);
-  --blob-2: rgba(244, 114, 182, .42);
-  --blob-3: rgba(96, 165, 250, .45);
-  --blob-4: rgba(251, 191, 36, .28);
-  --glass: rgba(255, 255, 255, .46);
-  --glass-strong: rgba(255, 255, 255, .72);
-  --glass-edge: rgba(255, 255, 255, .78);
-  --glass-shade: rgba(23, 56, 50, .13);
-  --sheen: rgba(255, 255, 255, .55);
-  --text: #0e201c;
-  --muted: rgba(14, 32, 28, .66);
-  --line: rgba(14, 32, 28, .11);
-  --chip: rgba(255, 255, 255, .5);
-  --field: rgba(255, 255, 255, .55);
+  --bg: #ffffff;
+  --glass: rgba(255, 255, 255, .72);
+  --glass-strong: #ffffff;
+  --glass-edge: rgba(0, 0, 0, .09);
+  --glass-shade: rgba(0, 0, 0, .1);
+  --sheen: rgba(255, 255, 255, .9);
+  --text: #0b0f0e;
+  --muted: rgba(11, 15, 14, .62);
+  --line: rgba(0, 0, 0, .09);
+  --chip: rgba(0, 0, 0, .05);
+  --field: rgba(0, 0, 0, .04);
   --accent: #0a8276;
   --accent-hi: #16a698;
   --accent-text: #ffffff;
   --good: #137a3e;
   --danger: #c62828;
   /* Оценка: плохо / хорошо / отлично */
-  --r0: #bd2f2f; --r0-bg: rgba(239, 68, 68, .17);
-  --r1: #8f5c08; --r1-bg: rgba(245, 158, 11, .2);
-  --r2: #12703b; --r2-bg: rgba(34, 197, 94, .19);
+  --r0: #bd2f2f; --r0-bg: rgba(239, 68, 68, .13);
+  --r1: #8f5c08; --r1-bg: rgba(245, 158, 11, .17);
+  --r2: #12703b; --r2-bg: rgba(34, 197, 94, .15);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #070d14;
-    --blob-1: rgba(13, 148, 136, .5);
-    --blob-2: rgba(190, 45, 120, .36);
-    --blob-3: rgba(59, 90, 220, .42);
-    --blob-4: rgba(120, 60, 200, .28);
-    --glass: rgba(255, 255, 255, .09);
+    --bg: #000000;
+    --glass: rgba(255, 255, 255, .08);
     --glass-strong: rgba(255, 255, 255, .2);
-    --glass-edge: rgba(255, 255, 255, .2);
-    --glass-shade: rgba(0, 0, 0, .34);
-    --sheen: rgba(255, 255, 255, .13);
-    --text: #f3f7f6;
-    --muted: rgba(243, 247, 246, .7);
+    --glass-edge: rgba(255, 255, 255, .17);
+    --glass-shade: rgba(0, 0, 0, 0);
+    --sheen: rgba(255, 255, 255, .14);
+    --text: #f5f7f6;
+    --muted: rgba(245, 247, 246, .66);
     --line: rgba(255, 255, 255, .13);
-    --chip: rgba(255, 255, 255, .11);
-    --field: rgba(0, 0, 0, .22);
+    --chip: rgba(255, 255, 255, .1);
+    --field: rgba(255, 255, 255, .07);
     --accent: #0f9b8e;
     --accent-hi: #2cc4b4;
     --good: #5eeaa0;
@@ -53,13 +45,11 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #070d14;
-  --blob-1: rgba(13, 148, 136, .5); --blob-2: rgba(190, 45, 120, .36);
-  --blob-3: rgba(59, 90, 220, .42); --blob-4: rgba(120, 60, 200, .28);
-  --glass: rgba(255, 255, 255, .09); --glass-strong: rgba(255, 255, 255, .2);
-  --glass-edge: rgba(255, 255, 255, .2); --glass-shade: rgba(0, 0, 0, .34); --sheen: rgba(255, 255, 255, .13);
-  --text: #f3f7f6; --muted: rgba(243, 247, 246, .7); --line: rgba(255, 255, 255, .13);
-  --chip: rgba(255, 255, 255, .11); --field: rgba(0, 0, 0, .22);
+  --bg: #000000;
+  --glass: rgba(255, 255, 255, .08); --glass-strong: rgba(255, 255, 255, .2);
+  --glass-edge: rgba(255, 255, 255, .17); --glass-shade: rgba(0, 0, 0, 0); --sheen: rgba(255, 255, 255, .14);
+  --text: #f5f7f6; --muted: rgba(245, 247, 246, .66); --line: rgba(255, 255, 255, .13);
+  --chip: rgba(255, 255, 255, .1); --field: rgba(255, 255, 255, .07);
   --accent: #0f9b8e; --accent-hi: #2cc4b4; --good: #5eeaa0; --danger: #ff8a8a;
   --r0: #ff9393; --r0-bg: rgba(239, 68, 68, .22);
   --r1: #fcd062; --r1-bg: rgba(245, 158, 11, .2);
@@ -72,16 +62,6 @@ body {
   margin: 0;
   color: var(--text);
   font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-}
-/* Фон лежит отдельным слоем, чтобы стеклу было что размывать при прокрутке */
-body::before, .overlay::before {
-  content: ""; position: fixed; inset: 0; z-index: -1;
-  background:
-    radial-gradient(60vmax 60vmax at 8% 8%, var(--blob-1), transparent 62%),
-    radial-gradient(55vmax 55vmax at 96% 22%, var(--blob-2), transparent 60%),
-    radial-gradient(65vmax 65vmax at 18% 78%, var(--blob-3), transparent 62%),
-    radial-gradient(50vmax 50vmax at 92% 92%, var(--blob-4), transparent 60%),
-    var(--bg);
 }
 main {
   max-width: 560px;
@@ -241,16 +221,14 @@ details.edit[open] summary { margin-bottom: 8px; }
 .wk i { position: absolute; top: -5px; right: -3px; font-style: normal; font-size: 10px; line-height: 14px; width: 14px; border-radius: 50%; background: #dc3a3a; color: #fff; text-align: center; }
 
 /* Полноэкранный таймер */
-.overlay { position: fixed; inset: 0; z-index: 50; isolation: isolate; display: flex; align-items: center; justify-content: center;
+.overlay { position: fixed; inset: 0; z-index: 50; isolation: isolate; background: var(--bg); display: flex; align-items: center; justify-content: center;
   padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px); }
-.overlay.running { align-items: flex-end; }
-#brush-ui { width: 100%; max-width: 380px; }
-/* Видео сверху на весь экран: лицо в кадре, снизу плавно уходит под стеклянную панель */
+.overlay.running { flex-direction: column; gap: 12px; }
+#brush-ui { width: 100%; max-width: 380px; flex: none; }
+/* Видео целиком, без обрезки, над панелью. На низких экранах оно уменьшается, а не наезжает на панель */
 #brush-video {
-  position: absolute; top: 0; left: 0; width: 100%; height: 62%; z-index: -1;
-  object-fit: cover; object-position: 30% 20%;
-  -webkit-mask-image: linear-gradient(#000 76%, transparent);
-  mask-image: linear-gradient(#000 76%, transparent);
+  flex: 0 1 auto; min-height: 0; width: 100%; max-width: 380px; aspect-ratio: 1280 / 924;
+  object-fit: contain; border-radius: 28px; border: 1px solid var(--glass-edge);
 }
 .overlay-box {
   position: relative; isolation: isolate;

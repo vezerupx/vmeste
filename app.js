@@ -9,7 +9,7 @@ const COLOR_CHOICES = ['#0f9b8e', '#e5487b', '#3b82f6', '#f59e0b', '#8b5cf6', '#
 const WATER_BUTTONS = [150, 250, 330, 500];
 // Увеличивайте при каждом обновлении: телефон увидит новую версию и сбросит старый кэш.
 // Номер виден внизу вкладки «Ещё».
-const APP_VERSION = 5;
+const APP_VERSION = 6;
 
 // ---------- даты и форматирование ----------
 const dayStr = (d = new Date()) => d.toLocaleDateString('sv-SE'); // YYYY-MM-DD по местному времени
@@ -31,7 +31,7 @@ const colorOf = (p) => p?.color || DEFAULT_COLORS[state.people.indexOf(p)] || DE
 const nameOf = (p) => (p?.name || '').trim() || (p?.id === api.uid ? 'Я' : 'Партнёр');
 
 // ---------- тема: светлая / тёмная / как в системе (хранится на каждом устройстве) ----------
-const THEME_BG = { light: '#f4f6f5', dark: '#111514' };
+const THEME_BG = { light: '#ffffff', dark: '#000000' };
 const getTheme = () => { try { return localStorage.getItem('theme') || 'auto'; } catch { return 'auto'; } };
 function applyTheme(t) {
   const root = document.documentElement;
