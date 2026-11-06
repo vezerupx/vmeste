@@ -6,10 +6,10 @@ const app = $('#app');
 const GOAL = CONFIG.WATER_GOAL_ML;
 const DEFAULT_COLORS = ['#0f9b8e', '#e5487b'];
 const COLOR_CHOICES = ['#0f9b8e', '#e5487b', '#3b82f6', '#f59e0b', '#8b5cf6', '#22a35a'];
-const WATER_BUTTONS = [150, 250, 330, 500];
+const WATER_BUTTONS = [150, 250, 300, 500];
 // Увеличивайте при каждом обновлении: телефон увидит новую версию и сбросит старый кэш.
 // Номер виден внизу вкладки «Ещё».
-const APP_VERSION = 6;
+const APP_VERSION = 7;
 
 // ---------- даты и форматирование ----------
 const dayStr = (d = new Date()) => d.toLocaleDateString('sv-SE'); // YYYY-MM-DD по местному времени
